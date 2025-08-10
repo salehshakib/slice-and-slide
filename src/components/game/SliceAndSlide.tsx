@@ -122,7 +122,7 @@ export function SliceAndSlide() {
     setIsDrawing(false);
     setStartPoint(null);
     setCurrentRect(null);
-  }, [isDrawing, startPoint, currentRect, draggingPiece, boxes]);
+  }, [isDrawing, startPoint, currentRect, draggingPiece]);
 
   const sliceAllBoxes = (clickPoint: Point) => {
     let newBoxes: Box[] = [];
@@ -148,8 +148,8 @@ export function SliceAndSlide() {
                 const bottomHeight = slice.y + slice.height - clickPoint.y;
 
                 if (topHeight >= MIN_DIMENSION && bottomHeight >= MIN_DIMENSION) {
-                    tempSlices.push({ ...slice, id: nextId.current++, height: topHeight, color: getRandomColor() });
-                    tempSlices.push({ ...slice, id: nextId.current++, y: clickPoint.y, height: bottomHeight, color: getRandomColor() });
+                    tempSlices.push({ ...slice, id: nextId.current++, height: topHeight });
+                    tempSlices.push({ ...slice, id: nextId.current++, y: clickPoint.y, height: bottomHeight });
                 } else {
                     tempSlices.push(slice);
                 }
@@ -166,8 +166,8 @@ export function SliceAndSlide() {
                 const rightWidth = slice.x + slice.width - clickPoint.x;
 
                 if (leftWidth >= MIN_DIMENSION && rightWidth >= MIN_DIMENSION) {
-                    tempSlices.push({ ...slice, id: nextId.current++, width: leftWidth, color: getRandomColor() });
-                    tempSlices.push({ ...slice, id: nextId.current++, x: clickPoint.x, width: rightWidth, color: getRandomColor() });
+                    tempSlices.push({ ...slice, id: nextId.current++, width: leftWidth });
+                    tempSlices.push({ ...slice, id: nextId.current++, x: clickPoint.x, width: rightWidth });
                 } else {
                     tempSlices.push(slice);
                 }
