@@ -47,6 +47,7 @@ export function SliceAndSlide() {
   const [startPoint, setStartPoint] = useState<Point | null>(null);
   const [currentRect, setCurrentRect] = useState<Box | null>(null);
   const [draggingPiece, setDraggingPiece] = useState<DragInfo | null>(null);
+  const [mousePos, setMousePos] = useState<Point | null>(null);
 
   const canvasRef = useRef<HTMLDivElement>(null);
   const nextId = useRef(0);
@@ -63,6 +64,7 @@ export function SliceAndSlide() {
 
     setIsDrawing(true);
     setStartPoint({ x, y });
+    setCurrentRect(null); // Clear potential click-slice rect
   }, [draggingPiece]);
 
   const handleMouseMove = useCallback((e: MouseEvent<HTMLDivElement>) => {
@@ -70,6 +72,8 @@ export function SliceAndSlide() {
     const rect = canvasRef.current.getBoundingClientRect();
     const mouseX = e.clientX - rect.left;
     const mouseY = e.clientY - rect.top;
+    
+    setMousePos({ x: mouseX, y: mouseY });
 
     if (draggingPiece) {
       setBoxes(prevBoxes =>
@@ -98,41 +102,60 @@ export function SliceAndSlide() {
       if (currentRect.width > 5 && currentRect.height > 5) {
         setBoxes(prev => [...prev, { ...currentRect, id: nextId.current++, color: getRandomColor() }]);
       } else {
-        // It's a click, slice all boxes
+        // It's a click, slice all boxes at cursor position
         sliceAllBoxes(startPoint);
       }
+    } else if (isDrawing && startPoint) { // Handle click without drag
+        sliceAllBoxes(startPoint);
     }
     setIsDrawing(false);
     setStartPoint(null);
     setCurrentRect(null);
-  }, [isDrawing, startPoint, currentRect, boxes, draggingPiece]);
+  }, [isDrawing, startPoint, currentRect, draggingPiece]);
 
   const sliceAllBoxes = (clickPoint: Point) => {
-    let newBoxes: Box[] = [];
-    boxes.forEach(boxToCut => {
-      const { id, x, y, width, height, color } = boxToCut;
-      const { x: clickX, y: clickY } = clickPoint;
-      
-      // We only cut the box if the click is inside it.
-      if (clickX > x && clickX < x + width && clickY > y && clickY < y + height) {
-        const definitions = [
-          { x, y, width: clickX - x, height: clickY - y }, // Top-left
-          { x: clickX, y, width: x + width - clickX, height: clickY - y }, // Top-right
-          { x, y: clickY, width: clickX - x, height: y + height - clickY }, // Bottom-left
-          { x: clickX, y: clickY, width: x + width - clickX, height: y + height - clickY }, // Bottom-right
-        ];
+    let currentBoxes = [...boxes];
+    let sliced = false;
 
-        definitions.forEach(p => {
-          if (p.width > 5 && p.height > 5) {
-            newBoxes.push({ ...p, id: nextId.current++, color });
-          }
-        });
+    // Horizontal slice
+    let afterHorizontalSlice: Box[] = [];
+    currentBoxes.forEach(box => {
+      if (clickPoint.y > box.y && clickPoint.y < box.y + box.height) {
+        sliced = true;
+        // Top part
+        if (clickPoint.y - box.y > 5) {
+          afterHorizontalSlice.push({ ...box, id: nextId.current++, height: clickPoint.y - box.y });
+        }
+        // Bottom part
+        if (box.y + box.height - clickPoint.y > 5) {
+          afterHorizontalSlice.push({ ...box, id: nextId.current++, y: clickPoint.y, height: box.y + box.height - clickPoint.y });
+        }
       } else {
-        // if click is not inside, keep the box as is
-        newBoxes.push(boxToCut);
+        afterHorizontalSlice.push(box);
       }
     });
-    setBoxes(newBoxes);
+
+    // Vertical slice
+    let afterVerticalSlice: Box[] = [];
+    afterHorizontalSlice.forEach(box => {
+      if (clickPoint.x > box.x && clickPoint.x < box.x + box.width) {
+        sliced = true;
+        // Left part
+        if (clickPoint.x - box.x > 5) {
+          afterVerticalSlice.push({ ...box, id: nextId.current++, width: clickPoint.x - box.x });
+        }
+        // Right part
+        if (box.x + box.width - clickPoint.x > 5) {
+          afterVerticalSlice.push({ ...box, id: nextId.current++, x: clickPoint.x, width: box.x + box.width - clickPoint.x });
+        }
+      } else {
+        afterVerticalSlice.push(box);
+      }
+    });
+
+    if (sliced) {
+      setBoxes(afterVerticalSlice);
+    }
   };
 
   const handlePieceMouseDown = (e: MouseEvent<HTMLDivElement>, piece: Box) => {
@@ -148,6 +171,13 @@ export function SliceAndSlide() {
       offsetY: mouseY - piece.y
     });
   };
+  
+  const handleMouseLeave = useCallback(() => {
+    setMousePos(null);
+    if(isDrawing) {
+        handleMouseUp();
+    }
+  }, [isDrawing, handleMouseUp]);
 
   const handleReset = useCallback(() => {
     setBoxes([]);
@@ -162,11 +192,11 @@ export function SliceAndSlide() {
     <div className="relative w-full">
       <div
         ref={canvasRef}
-        className="w-full h-[60vh] md:h-[70vh] bg-muted/20 cursor-crosshair touch-none select-none"
+        className="w-full h-[60vh] md:h-[70vh] bg-muted/20 cursor-none touch-none select-none overflow-hidden"
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseUp}
+        onMouseLeave={handleMouseLeave}
       >
         {boxes.map(box => (
           <div
@@ -198,6 +228,19 @@ export function SliceAndSlide() {
               height: currentRect.height
             }}
           />
+        )}
+        
+        {mousePos && !isDrawing && !draggingPiece && (
+          <>
+            <div
+              className="absolute bg-red-500/70"
+              style={{ left: 0, right: 0, top: mousePos.y - 0.5, height: 1, pointerEvents: 'none', zIndex: 20 }}
+            />
+            <div
+              className="absolute bg-red-500/70"
+              style={{ top: 0, bottom: 0, left: mousePos.x - 0.5, width: 1, pointerEvents: 'none', zIndex: 20 }}
+            />
+          </>
         )}
       </div>
       <div className="absolute top-4 right-4">
