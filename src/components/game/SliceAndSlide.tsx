@@ -98,13 +98,8 @@ export function SliceAndSlide() {
       if (currentRect.width > 5 && currentRect.height > 5) {
         setBoxes(prev => [...prev, { ...currentRect, id: nextId.current++, color: getRandomColor() }]);
       } else {
-        const boxToCut = boxes.find(box => 
-          startPoint.x > box.x && startPoint.x < box.x + box.width && 
-          startPoint.y > box.y && startPoint.y < box.y + box.height
-        );
-        if (boxToCut) {
-          cutBox(boxToCut, startPoint);
-        }
+        // It's a click, slice all boxes
+        sliceAllBoxes(startPoint);
       }
     }
     setIsDrawing(false);
@@ -112,25 +107,32 @@ export function SliceAndSlide() {
     setCurrentRect(null);
   }, [isDrawing, startPoint, currentRect, boxes, draggingPiece]);
 
-  const cutBox = (boxToCut: Box, clickPoint: Point) => {
-    const { id, x, y, width, height, color } = boxToCut;
-    const { x: clickX, y: clickY } = clickPoint;
-    const newPieces: Box[] = [];
+  const sliceAllBoxes = (clickPoint: Point) => {
+    let newBoxes: Box[] = [];
+    boxes.forEach(boxToCut => {
+      const { id, x, y, width, height, color } = boxToCut;
+      const { x: clickX, y: clickY } = clickPoint;
+      
+      // We only cut the box if the click is inside it.
+      if (clickX > x && clickX < x + width && clickY > y && clickY < y + height) {
+        const definitions = [
+          { x, y, width: clickX - x, height: clickY - y }, // Top-left
+          { x: clickX, y, width: x + width - clickX, height: clickY - y }, // Top-right
+          { x, y: clickY, width: clickX - x, height: y + height - clickY }, // Bottom-left
+          { x: clickX, y: clickY, width: x + width - clickX, height: y + height - clickY }, // Bottom-right
+        ];
 
-    const definitions = [
-      { x, y, width: clickX - x, height: clickY - y }, // Top-left
-      { x: clickX, y, width: x + width - clickX, height: clickY - y }, // Top-right
-      { x, y: clickY, width: clickX - x, height: y + height - clickY }, // Bottom-left
-      { x: clickX, y: clickY, width: x + width - clickX, height: y + height - clickY }, // Bottom-right
-    ];
-
-    definitions.forEach(p => {
-      if (p.width > 5 && p.height > 5) {
-        newPieces.push({ ...p, id: nextId.current++, color });
+        definitions.forEach(p => {
+          if (p.width > 5 && p.height > 5) {
+            newBoxes.push({ ...p, id: nextId.current++, color });
+          }
+        });
+      } else {
+        // if click is not inside, keep the box as is
+        newBoxes.push(boxToCut);
       }
     });
-
-    setBoxes(prev => [...prev.filter(b => b.id !== id), ...newPieces]);
+    setBoxes(newBoxes);
   };
 
   const handlePieceMouseDown = (e: MouseEvent<HTMLDivElement>, piece: Box) => {
