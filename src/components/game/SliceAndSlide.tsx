@@ -41,7 +41,7 @@ const boxColors = [
 
 const getRandomColor = () => boxColors[Math.floor(Math.random() * boxColors.length)];
 
-const MIN_SLICE_AREA = 400; // Minimum area (width * height) for a slice to be valid
+const MIN_DIMENSION = 10; // Minimum width or height for a slice to be valid
 
 export function SliceAndSlide() {
   const [boxes, setBoxes] = useState<Box[]>([]);
@@ -66,10 +66,9 @@ export function SliceAndSlide() {
     const y = e.clientY - rect.top;
 
     clickStartRef.current = Date.now();
-    setIsDrawing(true);
     setStartPoint({ x, y });
-    setCurrentRect(null);
-
+    setCurrentRect(null); // Reset current rect
+    // Defer setting isDrawing to handle click vs. drag
   }, [draggingPiece]);
 
   const handleMouseMove = useCallback((e: MouseEvent<HTMLDivElement>) => {
@@ -88,12 +87,19 @@ export function SliceAndSlide() {
             : box
         )
       );
-    } else if (isDrawing && startPoint) {
-      const x = Math.min(startPoint.x, mouseX);
-      const y = Math.min(startPoint.y, mouseY);
-      const width = Math.abs(startPoint.x - mouseX);
-      const height = Math.abs(startPoint.y - mouseY);
-      setCurrentRect({ id: -1, x, y, width, height, color: 'border-primary' });
+    } else if (startPoint) {
+      // If mouse moved a bit, start drawing
+      if (!isDrawing && (Math.abs(startPoint.x - mouseX) > 5 || Math.abs(startPoint.y - mouseY) > 5)) {
+        setIsDrawing(true);
+      }
+
+      if (isDrawing) {
+        const x = Math.min(startPoint.x, mouseX);
+        const y = Math.min(startPoint.y, mouseY);
+        const width = Math.abs(startPoint.x - mouseX);
+        const height = Math.abs(startPoint.y - mouseY);
+        setCurrentRect({ id: -1, x, y, width, height, color: 'border-primary' });
+      }
     }
   }, [isDrawing, startPoint, draggingPiece]);
 
@@ -106,13 +112,11 @@ export function SliceAndSlide() {
       return;
     }
     
-    if (isDrawing && startPoint) {
-      // If it was a short click (not a drag), and not on a piece, then slice
-      if (clickDuration !== null && clickDuration < 200 && currentRect && (currentRect.width < 10 && currentRect.height < 10) ) {
-         sliceAllBoxes(startPoint);
-      } else if (currentRect && currentRect.width * currentRect.height > MIN_SLICE_AREA) {
+    // If it was a short click (not a drag), then slice
+    if (startPoint && !isDrawing && clickDuration !== null && clickDuration < 200) {
+      sliceAllBoxes(startPoint);
+    } else if (isDrawing && currentRect && currentRect.width >= MIN_DIMENSION && currentRect.height >= MIN_DIMENSION) {
         setBoxes(prev => [...prev, { ...currentRect, id: nextId.current++, color: getRandomColor() }]);
-      }
     }
 
     setIsDrawing(false);
@@ -133,19 +137,19 @@ export function SliceAndSlide() {
             return;
         }
         
-        changed = true;
         let currentSlices = [box];
         let tempSlices: Box[] = [];
 
         // Horizontal slice
         if (canSliceHorizontally) {
+            changed = true;
             currentSlices.forEach(slice => {
                 const topHeight = clickPoint.y - slice.y;
                 const bottomHeight = slice.y + slice.height - clickPoint.y;
 
-                if (slice.width * topHeight >= MIN_SLICE_AREA && slice.width * bottomHeight >= MIN_SLICE_AREA) {
-                    tempSlices.push({ ...slice, id: nextId.current++, height: topHeight });
-                    tempSlices.push({ ...slice, id: nextId.current++, y: clickPoint.y, height: bottomHeight });
+                if (topHeight >= MIN_DIMENSION && bottomHeight >= MIN_DIMENSION) {
+                    tempSlices.push({ ...slice, id: nextId.current++, height: topHeight, color: getRandomColor() });
+                    tempSlices.push({ ...slice, id: nextId.current++, y: clickPoint.y, height: bottomHeight, color: getRandomColor() });
                 } else {
                     tempSlices.push(slice);
                 }
@@ -156,13 +160,14 @@ export function SliceAndSlide() {
 
         // Vertical slice
         if (canSliceVertically) {
+            changed = true;
             currentSlices.forEach(slice => {
                 const leftWidth = clickPoint.x - slice.x;
                 const rightWidth = slice.x + slice.width - clickPoint.x;
 
-                if (leftWidth * slice.height >= MIN_SLICE_AREA && rightWidth * slice.height >= MIN_SLICE_AREA) {
-                    tempSlices.push({ ...slice, id: nextId.current++, width: leftWidth });
-                    tempSlices.push({ ...slice, id: nextId.current++, x: clickPoint.x, width: rightWidth });
+                if (leftWidth >= MIN_DIMENSION && rightWidth >= MIN_DIMENSION) {
+                    tempSlices.push({ ...slice, id: nextId.current++, width: leftWidth, color: getRandomColor() });
+                    tempSlices.push({ ...slice, id: nextId.current++, x: clickPoint.x, width: rightWidth, color: getRandomColor() });
                 } else {
                     tempSlices.push(slice);
                 }
