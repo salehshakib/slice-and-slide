@@ -41,6 +41,8 @@ const boxColors = [
 
 const getRandomColor = () => boxColors[Math.floor(Math.random() * boxColors.length)];
 
+const MIN_SLICE_AREA = 400; // Minimum area (width * height) for a slice to be valid
+
 export function SliceAndSlide() {
   const [boxes, setBoxes] = useState<Box[]>([]);
   const [isDrawing, setIsDrawing] = useState(false);
@@ -62,10 +64,20 @@ export function SliceAndSlide() {
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
 
-    setIsDrawing(true);
-    setStartPoint({ x, y });
-    setCurrentRect(null); // Clear potential click-slice rect
-  }, [draggingPiece]);
+    // Check if the click is on a box to slice, otherwise start drawing
+    const clickedOnBox = boxes.some(box => x >= box.x && x <= box.x + box.width && y >= box.y && y <= box.y + box.height);
+
+    if (clickedOnBox) {
+        sliceAllBoxes({ x, y });
+        setIsDrawing(false);
+        setStartPoint(null);
+        setCurrentRect(null);
+    } else {
+        setIsDrawing(true);
+        setStartPoint({ x, y });
+        setCurrentRect(null); // Clear potential click-slice rect
+    }
+  }, [draggingPiece, boxes]);
 
   const handleMouseMove = useCallback((e: MouseEvent<HTMLDivElement>) => {
     if (!canvasRef.current) return;
@@ -99,62 +111,72 @@ export function SliceAndSlide() {
     }
     
     if (isDrawing && startPoint && currentRect) {
-      if (currentRect.width > 5 && currentRect.height > 5) {
+      if (currentRect.width * currentRect.height > MIN_SLICE_AREA) {
         setBoxes(prev => [...prev, { ...currentRect, id: nextId.current++, color: getRandomColor() }]);
-      } else {
-        // It's a click, slice all boxes at cursor position
-        sliceAllBoxes(startPoint);
+      } else if (!boxes.some(box => startPoint.x >= box.x && startPoint.x <= box.x + box.width && startPoint.y >= box.y && startPoint.y <= box.y + box.height)) {
+        // This was a small drag on an empty space, do nothing.
       }
-    } else if (isDrawing && startPoint) { // Handle click without drag
-        sliceAllBoxes(startPoint);
     }
     setIsDrawing(false);
     setStartPoint(null);
     setCurrentRect(null);
-  }, [isDrawing, startPoint, currentRect, draggingPiece]);
+  }, [isDrawing, startPoint, currentRect, draggingPiece, boxes]);
 
   const sliceAllBoxes = (clickPoint: Point) => {
-    let currentBoxes = [...boxes];
-    let sliced = false;
+    let newBoxes: Box[] = [];
+    let changed = false;
 
-    // Horizontal slice
-    let afterHorizontalSlice: Box[] = [];
-    currentBoxes.forEach(box => {
-      if (clickPoint.y > box.y && clickPoint.y < box.y + box.height) {
-        sliced = true;
-        // Top part
-        if (clickPoint.y - box.y > 5) {
-          afterHorizontalSlice.push({ ...box, id: nextId.current++, height: clickPoint.y - box.y });
+    boxes.forEach(box => {
+        const canSliceHorizontally = clickPoint.y > box.y && clickPoint.y < box.y + box.height;
+        const canSliceVertically = clickPoint.x > box.x && clickPoint.x < box.x + box.width;
+
+        if (!canSliceHorizontally && !canSliceVertically) {
+            newBoxes.push(box);
+            return;
         }
-        // Bottom part
-        if (box.y + box.height - clickPoint.y > 5) {
-          afterHorizontalSlice.push({ ...box, id: nextId.current++, y: clickPoint.y, height: box.y + box.height - clickPoint.y });
+        
+        changed = true;
+        let currentSlices = [box];
+        let tempSlices: Box[] = [];
+
+        // Horizontal slice
+        if (canSliceHorizontally) {
+            currentSlices.forEach(slice => {
+                const topHeight = clickPoint.y - slice.y;
+                const bottomHeight = slice.y + slice.height - clickPoint.y;
+
+                if (slice.width * topHeight >= MIN_SLICE_AREA && slice.width * bottomHeight >= MIN_SLICE_AREA) {
+                    tempSlices.push({ ...slice, id: nextId.current++, height: topHeight });
+                    tempSlices.push({ ...slice, id: nextId.current++, y: clickPoint.y, height: bottomHeight });
+                } else {
+                    tempSlices.push(slice);
+                }
+            });
+            currentSlices = tempSlices;
+            tempSlices = [];
         }
-      } else {
-        afterHorizontalSlice.push(box);
-      }
+
+        // Vertical slice
+        if (canSliceVertically) {
+            currentSlices.forEach(slice => {
+                const leftWidth = clickPoint.x - slice.x;
+                const rightWidth = slice.x + slice.width - clickPoint.x;
+
+                if (leftWidth * slice.height >= MIN_SLICE_AREA && rightWidth * slice.height >= MIN_SLICE_AREA) {
+                    tempSlices.push({ ...slice, id: nextId.current++, width: leftWidth });
+                    tempSlices.push({ ...slice, id: nextId.current++, x: clickPoint.x, width: rightWidth });
+                } else {
+                    tempSlices.push(slice);
+                }
+            });
+            currentSlices = tempSlices;
+        }
+        
+        newBoxes.push(...currentSlices);
     });
 
-    // Vertical slice
-    let afterVerticalSlice: Box[] = [];
-    afterHorizontalSlice.forEach(box => {
-      if (clickPoint.x > box.x && clickPoint.x < box.x + box.width) {
-        sliced = true;
-        // Left part
-        if (clickPoint.x - box.x > 5) {
-          afterVerticalSlice.push({ ...box, id: nextId.current++, width: clickPoint.x - box.x });
-        }
-        // Right part
-        if (box.x + box.width - clickPoint.x > 5) {
-          afterVerticalSlice.push({ ...box, id: nextId.current++, x: clickPoint.x, width: box.x + box.width - clickPoint.x });
-        }
-      } else {
-        afterVerticalSlice.push(box);
-      }
-    });
-
-    if (sliced) {
-      setBoxes(afterVerticalSlice);
+    if (changed) {
+        setBoxes(newBoxes);
     }
   };
 
