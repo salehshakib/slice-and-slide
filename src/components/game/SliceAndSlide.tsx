@@ -53,6 +53,7 @@ export function SliceAndSlide() {
 
   const canvasRef = useRef<HTMLDivElement>(null);
   const nextId = useRef(0);
+  const clickStartRef = useRef<number | null>(null);
 
   const handleMouseDown = useCallback((e: MouseEvent<HTMLDivElement>) => {
     if (draggingPiece || (e.target as HTMLElement).dataset.piece) {
@@ -64,20 +65,12 @@ export function SliceAndSlide() {
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
 
-    // Check if the click is on a box to slice, otherwise start drawing
-    const clickedOnBox = boxes.some(box => x >= box.x && x <= box.x + box.width && y >= box.y && y <= box.y + box.height);
+    clickStartRef.current = Date.now();
+    setIsDrawing(true);
+    setStartPoint({ x, y });
+    setCurrentRect(null);
 
-    if (clickedOnBox) {
-        sliceAllBoxes({ x, y });
-        setIsDrawing(false);
-        setStartPoint(null);
-        setCurrentRect(null);
-    } else {
-        setIsDrawing(true);
-        setStartPoint({ x, y });
-        setCurrentRect(null); // Clear potential click-slice rect
-    }
-  }, [draggingPiece, boxes]);
+  }, [draggingPiece]);
 
   const handleMouseMove = useCallback((e: MouseEvent<HTMLDivElement>) => {
     if (!canvasRef.current) return;
@@ -105,18 +98,23 @@ export function SliceAndSlide() {
   }, [isDrawing, startPoint, draggingPiece]);
 
   const handleMouseUp = useCallback(() => {
+    const clickDuration = clickStartRef.current ? Date.now() - clickStartRef.current : null;
+    clickStartRef.current = null;
+    
     if (draggingPiece) {
       setDraggingPiece(null);
       return;
     }
     
-    if (isDrawing && startPoint && currentRect) {
-      if (currentRect.width * currentRect.height > MIN_SLICE_AREA) {
+    if (isDrawing && startPoint) {
+      // If it was a short click (not a drag), and not on a piece, then slice
+      if (clickDuration !== null && clickDuration < 200 && currentRect && (currentRect.width < 10 && currentRect.height < 10) ) {
+         sliceAllBoxes(startPoint);
+      } else if (currentRect && currentRect.width * currentRect.height > MIN_SLICE_AREA) {
         setBoxes(prev => [...prev, { ...currentRect, id: nextId.current++, color: getRandomColor() }]);
-      } else if (!boxes.some(box => startPoint.x >= box.x && startPoint.x <= box.x + box.width && startPoint.y >= box.y && startPoint.y <= box.y + box.height)) {
-        // This was a small drag on an empty space, do nothing.
       }
     }
+
     setIsDrawing(false);
     setStartPoint(null);
     setCurrentRect(null);
